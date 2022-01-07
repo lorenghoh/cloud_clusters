@@ -5,7 +5,6 @@ import numpy as np
 import xarray as xr
 import zarr as zr
 import pandas as pd
-import pyarrow.parquet as pq
 
 import scipy.ndimage.measurements as measure
 import scipy.ndimage.morphology as morph
@@ -41,10 +40,11 @@ def sample_conditional_field(ds):
         ds["QP"][:] / 1e3,
     )
 
-    buoy = th_v > np.mean(th_v, axis=(1, 2))
+    w = (ds["W"] > 0)
+    buoy = (th_v > np.mean(th_v, axis=(1, 2)))
 
     c0_fld = ds["QN"] > 0
-    c1_fld = buoy & c0_fld
+    c1_fld = w & buoy & c0_fld
 
     # Define plume based on tracer fields (computationally intensive)
     # tr_field = ds['TR01'][:]
