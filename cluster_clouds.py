@@ -40,8 +40,8 @@ def sample_conditional_field(ds):
         ds["QP"][:] / 1e3,
     )
 
-    w = (ds["W"] > 0)
-    buoy = (th_v > np.mean(th_v, axis=(1, 2)))
+    w = ((ds["W"] + np.roll(ds["W"], 1, axis=1)) / 2 > 0)
+    buoy = (th_v > np.nanmean(th_v, axis=(1, 2)))
 
     c0_fld = ds["QN"] > 0
     c1_fld = w & buoy & c0_fld
@@ -103,9 +103,9 @@ def cluster_clouds():
             c_label = c_label[c_label > 0]
 
             if item == 0:
-                c_type = np.ones(len(c_label), dtype=int)
-            elif item == 1:
                 c_type = np.zeros(len(c_label), dtype=int)
+            elif item == 1:
+                c_type = np.ones(len(c_label), dtype=int)
             else:
                 raise TypeError
 
@@ -143,10 +143,10 @@ def cluster_clouds():
                 try:
                     ds = xr.open_zarr(store)
                     ds = ds.squeeze("time")
+
+                    write_clusters(ds, src, dst)
                 except Exception:
                     pass
-                
-                write_clusters(ds, src, dst)
         else:
             print("Error: File type not recognized.")
             raise Exception
