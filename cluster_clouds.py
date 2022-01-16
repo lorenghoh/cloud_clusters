@@ -1,5 +1,5 @@
-import bsddb3
-
+from resource import RLIM_INFINITY
+from shutil import rmtree
 import numpy as np
 
 import xarray as xr
@@ -12,7 +12,8 @@ import scipy.ndimage.morphology as morph
 from tqdm import tqdm
 from pathlib import Path
 
-import lib.calcs as calcs
+import lib.calcs
+import lib.io
 import lib.config
 
 config = lib.config.read_config()
@@ -22,29 +23,33 @@ config = lib.config.read_config()
 pwd = Path(__file__).absolute().parents[0]
 
 
-def sample_conditional_field(ds):
+def sample_conditional_field(ds, ds_e):
     """
     Define conditional fields
 
     Return
     ------
-    c0_fld: cloud field (QN > 0)
-    c1_fld: core field (QN > 0, W > 0, B > 0)
-    c2_fld: plume (tracer-dependant)
+    cor_b: core field (QN > 0, W > 0, B > 0)
+    cld_b: cloud field (QN > 0)
+    rmt_b: ramnant of core entrainment
+    TODO: trc_fld: plume (tracer-dependant)
     """
-    th_v = calcs.theta_v(
+    th_v = lib.calcs.theta_v(
         ds["p"][:] * 100,
         ds["TABS"][:],
         ds["QV"][:] / 1e3,
         ds["QN"][:] / 1e3,
         ds["QP"][:] / 1e3,
-    )
+    ).values
 
-    w = ((ds["W"] + np.roll(ds["W"], 1, axis=1)) / 2 > 0)
-    buoy = (th_v > np.nanmean(th_v, axis=(1, 2)))
+    w = (ds["W"] + np.roll(ds["W"], 1, axis=1)).values / 2 > 0
+    buoy = th_v > np.nanmean(th_v, axis=(1, 2))[:, None, None]
+    ent = ds_e["ETETCOR"].values > 0
 
-    c0_fld = ds["QN"] > 0
-    c1_fld = w & buoy & c0_fld
+    # Boolean maps
+    cld_b = ds["QN"].values > 0
+    cor_b = w & buoy & cld_b
+    rmt_b = ent
 
     # Define plume based on tracer fields (computationally intensive)
     # tr_field = ds['TR01'][:]
@@ -55,7 +60,7 @@ def sample_conditional_field(ds):
     # c2_fld = (tr_field > \
     #             np.max(np.array([tr_ave + tr_std, tr_min]), 0)[:, None, None])
 
-    return c0_fld, c1_fld
+    return cor_b, cld_b, rmt_b
 
 
 def cluster_clouds():
@@ -74,84 +79,68 @@ def cluster_clouds():
     Return
     ------
     Parquet files containing the coordinates
+    Type:
+        - 0 for cloudy cells
+        - 1 for core cells
+        - 2 for entrainment remnants
     """
     src = Path(config["src"])
-    dst = Path(config["dst"])
 
     # Ensure that the pq folder exists
-    if dst.exists is False:
-        print("pq folder not found. Ensure config.json validation")
-        raise FileNotFoundError
+    if (src / "pq").exists == False:
+        raise FileNotFoundError("pq folder not found. Ensure config.json validation")
 
-    def write_clusters(ds, src, dst):
+    def write_clusters(t, ds, ds_e, src):
         bin_st = morph.generate_binary_structure(3, 2)
-        # bin_st[0] = 0
-        # bin_st[-1] = 0
 
-        c0_fld, c1_fld = sample_conditional_field(ds)
+        # Remove 3D connectivity
+        bin_st[0] = 0
+        bin_st[-1] = 0
+
+        cor_b, cld_b, rmt_b = sample_conditional_field(ds, ds_e)
 
         df = pd.DataFrame(columns=["coord", "cid", "type"])
-        for item in [0, 1]:
-            c_field = locals()[f"c{item}_fld"]
+        c_map, _ = measure.label((cld_b | rmt_b), structure=bin_st)
+        c_label = c_map.ravel()
 
-            c_label, _ = measure.label(c_field, structure=bin_st)
-            c_label = c_label.ravel()  # Sparse array
+        # Parse different cloud fields
+        cld_map = (c_map > 0) & cld_b
+        cor_map = (c_map > 0) & cor_b
+        rmt_map = (c_map > 0) & ~(cld_b | cor_b)
+
+        target_fields = [cld_map, cor_map, rmt_map]
+        for i, c_fld in enumerate(target_fields):
+            c_flag = c_fld.ravel()
 
             # Extract indices
             c_index = np.arange(len(c_label))
-            c_index = c_index[c_label > 0]
-            c_label = c_label[c_label > 0]
-
-            if item == 0:
-                c_type = np.zeros(len(c_label), dtype=int)
-            elif item == 1:
-                c_type = np.ones(len(c_label), dtype=int)
-            else:
-                raise TypeError
+            c_index = c_index[c_flag > 0]
+            c_id = c_label[c_flag > 0]
+            c_type = np.ones(len(c_id), dtype=int) * i
 
             df_ = pd.DataFrame.from_dict(
-                {"coord": c_index, "cid": c_label, "type": c_type}
+                {"coord": c_index, "cid": c_id, "type": c_type}
             )
+
             df = pd.concat([df, df_])
 
-        file_name = f"{dst}/cloud_cluster_{time:04d}.pq"
+        file_name = f"{src}/pq/cloud_cluster_{t:04d}.pq"
         df.to_parquet(file_name)
 
         tqdm.write(f"Written {file_name}")
 
-    file_list = sorted((src).glob("CGILS_1728*"))
-    for time, item in enumerate(tqdm(file_list)):
-        fname = item.as_posix()
-        if item.suffix == ".nc":
-            with xr.open_dataset(fname) as ds:
-                try:
-                    ds = ds.squeeze("time")
-                except Exception:
-                    pass
+    ds_l = sorted((src / "variables").glob("CGILS_1728*"))
+    ent_l = sorted((src / "ent_core").glob("CGILS_CORE*"))
 
-            write_clusters(ds, src, dst)
-        elif item.suffix == ".zarr":
-            with xr.open_zarr(fname) as ds:
-                try:
-                    ds = ds.squeeze("time")
-                except Exception:
-                    pass
+    if len(ds_l) != len(ent_l):
+        raise ValueError("Database integrity check failed")
 
-                write_clusters(ds, src, dst)
-        elif item.suffix == ".db":
-            with zr.DBMStore(fname, open=bsddb3.btopen) as store:
-                try:
-                    ds = xr.open_zarr(store)
-                    ds = ds.squeeze("time")
+    for i in tqdm(range(len(ds_l))):
+        ds = lib.io.open_db(ds_l[i])
+        ds_e = lib.io.open_db(ent_l[i])
 
-                    write_clusters(ds, src, dst)
-                except Exception:
-                    pass
-        else:
-            print("Error: File type not recognized.")
-            raise Exception
+        write_clusters(i, ds, ds_e, src)
 
 
 if __name__ == "__main__":
     cluster_clouds()
-
