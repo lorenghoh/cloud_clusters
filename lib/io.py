@@ -1,4 +1,3 @@
-from typing import ValuesView
 import xarray as xr
 import zarr as zr
 import bsddb3 as bdb
@@ -44,6 +43,6 @@ def open_db(item):
         elif item.suffix == ".db":
             return get_db(item)
         else:
-            raise ValuesView("File type not recognized")
+            raise ValueError("File type not recognized")
     except:
         raise

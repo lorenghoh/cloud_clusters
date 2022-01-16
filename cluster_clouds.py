@@ -1,10 +1,9 @@
-from resource import RLIM_INFINITY
-from shutil import rmtree
 import numpy as np
+import pandas as pd
 
 import xarray as xr
 import zarr as zr
-import pandas as pd
+import bsddb3 as bdb
 
 import scipy.ndimage.measurements as measure
 import scipy.ndimage.morphology as morph
@@ -136,10 +135,14 @@ def cluster_clouds():
         raise ValueError("Database integrity check failed")
 
     for i in tqdm(range(len(ds_l))):
-        ds = lib.io.open_db(ds_l[i])
-        ds_e = lib.io.open_db(ent_l[i])
+        with zr.DBMStore(ds_l[i], open=bdb.btopen) as ds_s, zr.DBMStore(ent_l[i], open=bdb.btopen) as de_s:
+            try:
+                ds = xr.open_zarr(ds_s).squeeze("time")
+                de = xr.open_zarr(de_s).squeeze("time")
 
-        write_clusters(i, ds, ds_e, src)
+                write_clusters(i, ds, de, src)
+            except Exception:
+                pass
 
 
 if __name__ == "__main__":
