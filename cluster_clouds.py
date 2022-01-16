@@ -38,15 +38,16 @@ def sample_conditional_field(ds, ds_e):
         ds["TABS"][:],
         ds["QV"][:] / 1e3,
         ds["QN"][:] / 1e3,
-        ds["QP"][:] / 1e3,
-    ).values
+        ds["QP"][:] / 1e3
+    )
 
-    w = (ds["W"] + np.roll(ds["W"], 1, axis=1)).values / 2 > 0
-    buoy = th_v > np.nanmean(th_v, axis=(1, 2))[:, None, None]
-    ent = ds_e["ETETCOR"].values > 0
+    qn = (ds["QN"] > 0).values
+    w = ((ds["W"] + np.roll(ds["W"], 1, axis=1)) / 2 > 0).values
+    buoy = (th_v > np.nanmean(th_v, axis=(1, 2))[:, None, None]).values
+    ent = (ds_e["ETETCOR"] > 0).values
 
     # Boolean maps
-    cld_b = ds["QN"].values > 0
+    cld_b = qn
     cor_b = w & buoy & cld_b
     rmt_b = ent
 
@@ -129,20 +130,19 @@ def cluster_clouds():
         tqdm.write(f"Written {file_name}")
 
     ds_l = sorted((src / "variables").glob("CGILS_1728*"))
-    ent_l = sorted((src / "ent_core").glob("CGILS_CORE*"))
+    de_l = sorted((src / "ent_core").glob("CGILS_CORE*"))
 
-    if len(ds_l) != len(ent_l):
+    if len(ds_l) != len(de_l):
         raise ValueError("Database integrity check failed")
 
     for i in tqdm(range(len(ds_l))):
-        with zr.DBMStore(ds_l[i], open=bdb.btopen) as ds_s, zr.DBMStore(ent_l[i], open=bdb.btopen) as de_s:
-            try:
-                ds = xr.open_zarr(ds_s).squeeze("time")
-                de = xr.open_zarr(de_s).squeeze("time")
+        ds = next(next(lib.io.open_db(ds_l[i])))
+        de = next(next(lib.io.open_db(de_l[i])))
 
-                write_clusters(i, ds, de, src)
-            except Exception:
-                pass
+        write_clusters(i, ds, de, src)
+
+        ds.close()
+        de.close()
 
 
 if __name__ == "__main__":

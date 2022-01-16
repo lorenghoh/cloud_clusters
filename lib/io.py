@@ -4,45 +4,32 @@ import bsddb3 as bdb
 
 
 def get_nc(item):
-    with xr.open_dataset(item) as ds:
-        try:
-            ds = ds.squeeze("time")
-        except Exception:
-            pass
+    ds = xr.open_dataset(item)
+    yield ds
 
-        return ds.load()
+    ds.close()
 
 
 def get_zarr(item):
-    with xr.open_zarr(item) as ds:
-        try:
-            ds = ds.squeeze("time")
-        except Exception:
-            pass
+    ds = xr.open_zarr(item)
+    yield ds
 
-        return ds.load()
+    ds.close()
 
 
 def get_db(item):
-    with zr.DBMStore(item, open=bdb.btopen) as store:
-        try:
-            ds = xr.open_zarr(store)
-            ds = ds.squeeze("time")
-        except Exception:
-            pass
+    store = zr.DBMStore(item, open=bdb.btopen)
+    yield xr.open_zarr(store)
 
-        return ds.load()
+    store.close()
 
 
 def open_db(item):
-    try:
-        if item.suffix == ".nc":
-            return get_nc(item)
-        elif item.suffix == ".zarr":
-            return get_zarr(item)
-        elif item.suffix == ".db":
-            return get_db(item)
-        else:
-            raise ValueError("File type not recognized")
-    except:
-        raise
+    if item.suffix == ".nc":
+        yield get_nc(item)
+    elif item.suffix == ".zarr":
+        yield get_zarr(item)
+    elif item.suffix == ".db":
+        yield get_db(item)
+    else:
+        raise ValueError("File type not recognized")
