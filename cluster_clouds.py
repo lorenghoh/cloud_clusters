@@ -124,7 +124,7 @@ def cluster_clouds():
 
             df = pd.concat([df, df_])
 
-        file_name = f"{src}/pq/cloud_cluster_{t:04d}.pq"
+        file_name = f"{src}/clusters/cloud_cluster_{t:04d}.pq"
         df.to_parquet(file_name)
 
         tqdm.write(f"Written {file_name}")
