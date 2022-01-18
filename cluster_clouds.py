@@ -94,8 +94,8 @@ def cluster_clouds():
         bin_st = morph.generate_binary_structure(3, 2)
 
         # Remove 3D connectivity
-        bin_st[0] = 0
-        bin_st[-1] = 0
+        # bin_st[0] = 0
+        # bin_st[-1] = 0
 
         cor_b, cld_b, rmt_b = sample_conditional_field(ds, ds_e)
 
