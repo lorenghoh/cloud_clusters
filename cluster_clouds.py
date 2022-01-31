@@ -103,7 +103,7 @@ def cluster_clouds():
         columns in the resulting Pandas DataFrame.
 
         """
-        index = df.coord.values.astype(int)
+        index = df.coord.values.coord_to_zxy
 
         # TODO: Now that this is vectorized, I can speed up the post-processing
         df["z"], df["y"], df["x"] = np.unravel_index(index, (192, 512, 1536))
@@ -115,9 +115,9 @@ def cluster_clouds():
         # We can use the fact that the core is guaranteed to be in a cloudy region
         cor_b, cld_b, rmt_b = sample_conditional_field(ds, ds_e)
 
-        # b_struct = get_bstruct(st2d=True)
-        # cl_map, _ = measure.label((cld_b | rmt_b), structure=b_struct)
-        # cl_label = cl_map.ravel()
+        b_struct = get_bstruct(st2d=True)
+        cl_map, _ = measure.label((cld_b | rmt_b), structure=b_struct)
+        cl_label = cl_map.ravel()
 
         # Contiguous core field
         b_struct = get_bstruct(st2d=False)
@@ -127,8 +127,8 @@ def cluster_clouds():
         # Parse different cloud fields
         c_cor_map = (c_map > 0) & cor_b  # Full 3D core map
 
-        # cld_map = (cl_map > 0) & cld_b
-        # rmt_map = (cl_map > 0) & ~(cld_b | cor_b)
+        cld_map = (cl_map > 0) & cld_b
+        rmt_map = (cl_map > 0) & ~(cld_b | cor_b)
 
         def _get_df(c_label, c_map, c_type):
             c_flag = c_map.ravel()
@@ -148,32 +148,32 @@ def cluster_clouds():
             return _df
 
         # 3D core coordinates
-        df = _get_df(c_label, c_cor_map, 1)
+        df = coord_to_zxy(_get_df(c_label, c_cor_map, 1))
 
         # 2d cloud coordinates
-        # df_cl = pd.DataFrame(columns=["coord", "cid", "type"])
-        # fields = [(0, cld_map), (2, rmt_map)]
-        # for i, c_fld in fields:
-        #     df_cl = pd.concat([df_cl, _get_df(cl_label, c_fld, i)])
-        # df_cl = coord_to_zxy(df_cl)
+        df_cl = pd.DataFrame(columns=["coord", "cid", "type"])
+        fields = [(0, cld_map), (2, rmt_map)]
+        for i, c_fld in fields:
+            df_cl = pd.concat([df_cl, _get_df(cl_label, c_fld, i)])
+        df_cl = coord_to_zxy(df_cl)
 
-        # def _worker(g):
-        #     # Pick the first row and find it in the cloud field
-        #     # It is guaranteed to be in the cloud field DataFrame
-        #     _g = g.iloc[0]
+        def _worker(g):
+            # Pick the first row and find it in the cloud field
+            # It is guaranteed to be in the cloud field DataFrame
+            _g = g.iloc[0]
 
-        #     _df = df_cl[(df_cl.z == _g.z) & (df_cl.y == _g.y) & (df_cl.x == _g.x)]
-        #     _df = _df.assign(cid=_g.cid)
+            _df = df_cl[(df_cl.z == _g.z) & (df_cl.y == _g.y) & (df_cl.x == _g.x)]
+            _df = _df.assign(cid=_g.cid)
 
-        #     return pd.concat([g, _df])
+            return pd.concat([g, _df])
 
-        # grp = df.groupby(["cid", "z"], as_index=False)
-        # with Parallel(n_jobs=20) as Pr:
-        #     result = Pr(delayed(_worker)(g) for _, g in grp)
-        #     df = pd.concat(result, ignore_index=True)
+        grp = df.groupby(["cid", "z"], as_index=False)
+        with Parallel(n_jobs=20) as Pr:
+            result = Pr(delayed(_worker)(g) for _, g in grp)
+            df_out = pd.concat(result, ignore_index=True)
 
-        file_name = f"{src}/clusters_cor/cloud_cluster_{t:04d}.pq"
-        df.drop(["z", "y", "x"], axis=1).to_parquet(file_name)
+        file_name = f"{src}/clusters/cloud_cluster_{t:04d}.pq"
+        df_out.drop(["z", "y", "x"], axis=1).to_parquet(file_name)
 
         tqdm.write(f"Written {file_name}")
 
