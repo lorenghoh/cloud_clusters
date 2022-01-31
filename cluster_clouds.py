@@ -97,6 +97,19 @@ def cluster_clouds():
 
         return b_struct
 
+    def coord_to_zxy(df):
+        """
+        Unravels the raveled index (index -> z, y, x) and creates corresponding
+        columns in the resulting Pandas DataFrame.
+
+        """
+        index = df.coord.values
+
+        # TODO: Now that this is vectorized, I can speed up the post-processing
+        df["z"], df["y"], df["x"] = np.unravel_index(index, (192, 512, 1536))
+
+        return df
+
     def write_clusters(t, ds, ds_e, src):
         # TODO: pre-process cloud field to exclude 2d cloud slices with no core
         # We can use the fact that the core is guaranteed to be in a cloudy region
@@ -135,13 +148,14 @@ def cluster_clouds():
             return _df
 
         # 3D core coordinates
-        df = _get_df(c_label, c_cor_map, 1)
+        df = coord_to_zxy(_get_df(c_label, c_cor_map, 1))
 
         # 2d cloud coordinates
         df_cl = pd.DataFrame(columns=["coord", "cid", "type"])
         fields = [(0, cld_map), (2, rmt_map)]
         for i, c_fld in fields:
             df_cl = pd.concat([df_cl, _get_df(cl_label, c_fld, i)])
+        df_cl = coord_to_zxy(df_cl)
 
         def _worker(g):
             # Pick the first row and find it in the cloud field
@@ -159,7 +173,7 @@ def cluster_clouds():
             df_out = pd.concat(result, ignore_index=True)
 
         file_name = f"{src}/clusters/cloud_cluster_{t:04d}.pq"
-        df_out.to_parquet(file_name)
+        df_out.drop(["z", "y", "x"], axis=1).to_parquet(file_name)
 
         tqdm.write(f"Written {file_name}")
 
