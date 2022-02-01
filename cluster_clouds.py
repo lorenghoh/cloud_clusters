@@ -134,7 +134,7 @@ def cluster_clouds():
         tqdm.write(f"Written {file_name}")
 
     ds_l = sorted((src / "variables").glob("CGILS_1728*"))
-    de_l = sorted((src / "ent_core").glob("CGILS_CORE*"))
+    de_l = sorted((src / "ent_cloud").glob("CGILS_CLOUD*"))
 
     if len(ds_l) != len(de_l):
         raise ValueError("Database integrity check failed")
