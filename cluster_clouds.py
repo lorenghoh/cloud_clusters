@@ -96,7 +96,7 @@ def write_clusters(t, ds, src):
     # for i, c_fld in enumerate([cld_map, cor_map]):
     df = pd.concat([df, get_clusters(c_label, cor_map, 1)])
 
-    file_name = f"{src}/clusters_cld/cloud_cluster_{t:04d}.pq"
+    file_name = f"{src}/clusters_cor/cloud_cluster_{t:04d}.pq"
     df.to_parquet(file_name)
 
     tqdm.write(f"Written {file_name}")
