@@ -41,7 +41,7 @@ def sample_conditional_field(ds):
     )
 
     qn = (ds["QN"] > 0).values
-    w = ((ds["W"] + np.roll(ds["W"], 1, axis=1)) / 2 > 0).values
+    w = ((ds["W"] + np.roll(ds["W"], 1, axis=0)) / 2 > 0).values
     buoy = (th_v > np.nanmean(th_v, axis=(1, 2))[:, None, None]).values
 
     # Boolean maps
@@ -69,13 +69,13 @@ def get_bstruct(st2d=False):
         b_struct[-1] = 0
 
 
-def get_clusters(c_lbl, c_map, c_type):
+def get_clusters(c_label, c_map, c_type):
     c_flag = c_map.ravel()
 
     # Extract indices
-    c_index = np.arange(len(c_lbl))
+    c_index = np.arange(len(c_label))
     c_index = c_index[c_flag > 0]
-    c_id = c_lbl[c_flag > 0]
+    c_id = c_label[c_flag > 0]
 
     df = pd.DataFrame.from_dict({"coord": c_index, "cid": c_id}).assign(type=c_type)
 
@@ -85,16 +85,16 @@ def get_clusters(c_lbl, c_map, c_type):
 def write_clusters(t, ds, src):
     cor_b, cld_b = sample_conditional_field(ds)
 
-    c_map, _ = measure.label(cld_b, structure=get_bstruct(st2d=False))
+    c_map, _ = measure.label(cor_b, structure=get_bstruct(st2d=False))
     c_label = c_map.ravel()
 
     # Parse different cloud fields
-    cld_map = (c_map > 0) & cld_b
+    # cld_map = (c_map > 0) & cld_b
     cor_map = (c_map > 0) & cor_b
 
     df = pd.DataFrame(columns=["coord", "cid", "type"])
-    for i, c_fld in enumerate([cld_map, cor_map]):
-        df = pd.concat([df, get_clusters(c_label, c_fld, i)])
+    # for i, c_fld in enumerate([cld_map, cor_map]):
+    df = pd.concat([df, get_clusters(c_label, cor_map, 1)])
 
     file_name = f"{src}/clusters_cld/cloud_cluster_{t:04d}.pq"
     df.to_parquet(file_name)
