@@ -85,18 +85,18 @@ def get_clusters(c_label, c_map, c_type):
 def write_clusters(t, ds, src):
     cor_b, cld_b = sample_conditional_field(ds)
 
-    c_map, _ = measure.label(cor_b, structure=get_bstruct(st2d=False))
+    c_map, _ = measure.label(cld_b, structure=get_bstruct(st2d=False))
     c_label = c_map.ravel()
 
     # Parse different cloud fields
-    # cld_map = (c_map > 0) & cld_b
+    cld_map = (c_map > 0) & cld_b
     cor_map = (c_map > 0) & cor_b
 
     df = pd.DataFrame(columns=["coord", "cid", "type"])
-    # for i, c_fld in enumerate([cld_map, cor_map]):
-    df = pd.concat([df, get_clusters(c_label, cor_map, 1)])
+    for i, c_fld in enumerate([cld_map, cor_map]):
+        df = pd.concat([df, get_clusters(c_label, c_fld, i)])
 
-    file_name = f"{src}/clusters_cor/cloud_cluster_{t:04d}.pq"
+    file_name = f"{src}/clusters_cld/cloud_cluster_{t:04d}.pq"
     df.to_parquet(file_name)
 
     tqdm.write(f"Written {file_name}")
